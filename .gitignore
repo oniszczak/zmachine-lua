@@ -1,0 +1,3 @@
+# save games written by the interpreter
+*.sav
+save.dat
