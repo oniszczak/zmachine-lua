@@ -79,9 +79,21 @@ Plugin directory by platform:
 Story files go in the library folder or `koreader/stories` (on Kobo that is
 `.adds/koreader/stories`; `/mnt/us` does not exist there).
 
-Tested on the Kindle 3. Other targets are compatible by construction rather
-than by observation. Widget fields are verified against KOReader v2026.07.1;
-an older KOReader may not have all of them.
+Confirmed working on:
+
+| Device | Architecture | KOReader |
+|---|---|---|
+| Kindle 3 (Keyboard) | ARMv6, soft-float | v2026.07.1 |
+| Kindle Paperwhite 2 | ARMv7, soft-float | v2026.07.1 |
+| Kobo Clara Colour   | ARM hard-float    | v2026.03   |
+
+The same files, unmodified, on hardware fourteen years apart and on two
+different KOReader releases. Remaining targets are compatible by construction
+rather than by observation.
+
+Widget fields are verified against the KOReader source at the version each
+device runs; if you are on something much older, check that `InputDialog`
+still has `buttons_table`, `use_available_height` and `enter_callback`.
 
 ## Scope
 
