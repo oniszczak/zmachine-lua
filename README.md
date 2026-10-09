@@ -125,3 +125,8 @@ plugin logic can be checked without a device.
 Verified against Hitchhiker's Guide to the Galaxy (release 59, serial 851108):
 header checksum matches, the game boots, parses commands, tracks score and
 turns, saves and restores, and plays through to its endings.
+
+## Licence
+
+Copyright (C) 2026 oniszczak. Licensed under the GNU Affero General Public
+License v3.0, the same licence as KOReader. See [LICENSE](LICENSE).
