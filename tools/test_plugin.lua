@@ -12,14 +12,20 @@ local function stub(name, t) package.preload[name] = function() return t end end
 
 stub("gettext", setmetatable({}, { __call = function(_, s) return s end }))
 stub("datastorage", { getDataDir = function() return "/tmp/zmtest" end })
+os.execute("mkdir -p /tmp/zmtest")   -- the game writes its save file here
 stub("device", {
     screen = { getWidth = function() return 600 end, getHeight = function() return 800 end },
     hasKeyboard = function() return true end,
 })
+local ticks, broadcasts = {}, {}
 stub("ui/uimanager", {
     show = function(_, w) shown[#shown + 1] = w end,
     close = function(_, w) end,
+    nextTick = function(_, fn) ticks[#ticks + 1] = fn end,
+    broadcastEvent = function(_, ev) broadcasts[#broadcasts + 1] = ev.name end,
 })
+local function runTicks() local t = ticks; ticks = {}; for _, fn in ipairs(t) do fn() end end
+stub("ui/event", { new = function(_, name) return { name = name } end })
 local function widget(kind)
     return { new = function(_, o) o = o or {}; o.__kind = kind; return o end }
 end
@@ -56,9 +62,13 @@ stub("ui/widget/container/widgetcontainer", {
 local real_dirs = {
     ["/tmp/zmtest/stories"] = { ".", "..", "hhgg.z3", "notes.txt", "ZORK1.DAT" },
 }
+local launch_flag_mtime = nil   -- set to fake a NickelMenu launch
 stub("libs/libkoreader-lfs", {
     attributes = function(p, what)
         if real_dirs[p] then return what == "mode" and "directory" or {} end
+        if p == "/tmp/zmachine.launch" and launch_flag_mtime then
+            return what == "modification" and launch_flag_mtime or {}
+        end
         return nil
     end,
     dir = function(p)
@@ -86,10 +96,11 @@ for _, s in ipairs(found) do print("   " .. s.name) end
 assert(#found == 2, "expected 2 story files, got " .. #found)
 assert(found[1].name == "hhgg.z3" and found[2].name == "ZORK1.DAT", "wrong files or order")
 
--- 2. the menu registers
+-- 2. the menu registers, under its new name
 local items = {}
 inst:addToMainMenu(items)
 assert(items.zmachine and items.zmachine.callback, "menu item missing")
+assert(items.zmachine.text == "Text Game", "menu item should be called Text Game")
 print("menu item        -> " .. items.zmachine.text .. "  (hint: " .. items.zmachine.sorting_hint .. ")")
 
 -- 3. the callback runs without error and shows a Menu
@@ -104,6 +115,56 @@ local ok = inst:guard(function() error("boom") end)
 assert(ok == false, "guard should report failure")
 assert(shown[#shown].__kind == "InfoMessage", "guard should show an InfoMessage")
 print("guard(error)     -> showed InfoMessage, KOReader survives")
+
+-- 4b. NickelMenu launch: a fresh flag opens the story list; leaving goes back to Nickel
+local real_remove = os.remove
+local removed = {}
+os.remove = function(p) removed[#removed + 1] = p; return true end
+local function newInstance()
+    local i = setmetatable({ ui = { menu = { registerToMainMenu = function() end } } }, { __index = ZMachine })
+    i:init()
+    return i
+end
+shown, broadcasts = {}, {}
+local plain = newInstance()
+runTicks()
+assert(#shown == 0 and not plain.from_nickel, "no flag: nothing should open")
+
+launch_flag_mtime = os.time() - 5
+local nm = newInstance()
+assert(removed[#removed] == "/tmp/zmachine.launch", "the flag should be consumed")
+runTicks()
+assert(nm.from_nickel and shown[#shown].__kind == "Menu", "a fresh flag should open the story list")
+shown[#shown].close_callback()            -- closed with X, nothing picked
+runTicks()
+assert(broadcasts[1] == "Exit", "closing the list without a pick should exit KOReader")
+print("NickelMenu launch -> story list opens; closing it exits to Kobo")
+
+broadcasts = {}
+launch_flag_mtime = os.time() - 5
+nm = newInstance(); runTicks()
+local list = shown[#shown]
+nm.start = function() end                 -- picking a story mustn't count as leaving
+list.item_table[1].callback()
+list.close_callback()
+runTicks()
+assert(#broadcasts == 0, "picking a story should not exit KOReader")
+print("  pick a story   -> stays in KOReader")
+
+launch_flag_mtime = os.time() - 600
+shown = {}
+local stale = newInstance(); runTicks()
+assert(#shown == 0 and not stale.from_nickel, "a stale flag should be ignored")
+print("  stale flag     -> ignored")
+launch_flag_mtime = nil
+os.remove = real_remove
+
+-- from KOReader's own menu, closing the list just closes
+broadcasts = {}
+inst:chooseStory()
+shown[#shown].close_callback()
+runTicks()
+assert(#broadcasts == 0, "from KOReader's menu, closing the list should not exit")
 
 -- 5. the full terminal loop against the real interpreter
 local story = os.getenv("HOME") .. "/Downloads/KIF/hhgg.z3"
@@ -184,8 +245,20 @@ if f then
     print("  exit           -> asked: \"" .. confirms[1].text .. "\" [" ..
           confirms[1].cancel_text .. "] [" .. confirms[1].ok_text .. "]")
     confirms[1].ok_callback()
+    runTicks()
     assert(inst.dialog == nil and inst.co == nil, "Yes should close the game")
+    assert(#broadcasts == 0, "from KOReader's menu, exiting the game should stay in KOReader")
     print("  exit confirmed -> game closed")
+
+    -- the same exit, when launched from NickelMenu, goes back to Nickel
+    inst.from_nickel = true
+    shown, confirms = {}, {}
+    inst:start(story)
+    for _, b in ipairs(shown[#shown].buttons[1]) do if b.text == "Exit" then b.callback() end end
+    confirms[1].ok_callback()
+    runTicks()
+    assert(broadcasts[1] == "Exit", "from NickelMenu, exiting the game should exit KOReader")
+    print("  exit (from NickelMenu) -> back to Kobo")
 else
     print("\n(story file not found; skipped the live terminal test)")
 end

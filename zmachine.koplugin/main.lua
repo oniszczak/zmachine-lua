@@ -1,15 +1,20 @@
 --[[--
-Interactive Fiction for KOReader — a pure-Lua Z-machine (version 3).
+Text Game: interactive fiction for KOReader — a pure-Lua Z-machine (version 3).
 
 The interpreter is synchronous: it runs until the game asks for a line of
 input. A GUI can't block, so the VM runs inside a coroutine and its
 `read_line` yields back to us. Typing a command resumes the coroutine.
+
+Opens from KOReader's Tools menu, or straight from NickelMenu: the NickelMenu
+entry touches LAUNCH_FLAG before starting KOReader, and a fresh flag opens the
+story list. Opened that way, leaving the game exits KOReader back to Nickel.
 
 @module koplugin.zmachine
 --]]--
 
 local DataStorage     = require("datastorage")
 local Device          = require("device")
+local Event           = require("ui/event")
 local InfoMessage     = require("ui/widget/infomessage")
 local InputDialog     = require("ui/widget/inputdialog")
 local ConfirmBox      = require("ui/widget/confirmbox")
@@ -27,6 +32,8 @@ local Memory  = require("zm.memory")
 local Machine = require("zm.machine")
 
 local MAX_TRANSCRIPT = 20000   -- characters of scrollback to keep
+local LAUNCH_FLAG = "/tmp/zmachine.launch"
+local LAUNCH_MAX_AGE = 120     -- seconds; an older flag is stale (KOReader failed to start)
 
 local ZMachine = WidgetContainer:extend{
     name = "zmachine",
@@ -35,6 +42,26 @@ local ZMachine = WidgetContainer:extend{
 
 function ZMachine:init()
     self.ui.menu:registerToMainMenu(self)
+    self:checkLaunchFlag()
+end
+
+function ZMachine:checkLaunchFlag()
+    local mtime = lfs.attributes(LAUNCH_FLAG, "modification")
+    if not mtime then return end
+    os.remove(LAUNCH_FLAG)
+    if os.time() - mtime > LAUNCH_MAX_AGE then return end
+    self.from_nickel = true
+    -- Next tick: the file manager or reader is shown after plugins init.
+    UIManager:nextTick(function()
+        self:guard(function() self:chooseStory() end)
+    end)
+end
+
+-- Opened from NickelMenu, leaving the game (or the story list) goes back to Nickel.
+function ZMachine:leave()
+    if self.from_nickel then
+        UIManager:nextTick(function() UIManager:broadcastEvent(Event:new("Exit")) end)
+    end
 end
 
 -- Run fn, reporting any error as a message rather than crashing KOReader.
@@ -42,7 +69,7 @@ function ZMachine:guard(fn)
     local ok, err = pcall(fn)
     if not ok then
         UIManager:show(InfoMessage:new{
-            text = _("Interactive fiction error:\n") .. tostring(err),
+            text = _("Text Game error:\n") .. tostring(err),
         })
     end
     return ok
@@ -50,7 +77,7 @@ end
 
 function ZMachine:addToMainMenu(menu_items)
     menu_items.zmachine = {
-        text = _("Interactive fiction"),
+        text = _("Text Game"),
         sorting_hint = "more_tools",
         callback = function() self:guard(function() self:chooseStory() end) end,
     }
@@ -100,12 +127,15 @@ function ZMachine:chooseStory()
         return
     end
 
-    local menu
+    -- close_callback runs both after a pick and when the list is closed with
+    -- X; only the latter means "leave".
+    local menu, picked
     local items = {}
     for _i, s in ipairs(stories) do
         items[#items + 1] = {
             text = s.name,
             callback = function()
+                picked = true
                 UIManager:close(menu)
                 self:guard(function() self:start(s.path) end)
             end,
@@ -117,7 +147,10 @@ function ZMachine:chooseStory()
         is_popout = false,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
-        close_callback = function() UIManager:close(menu) end,
+        close_callback = function()
+            UIManager:close(menu)
+            if not picked then self:leave() end
+        end,
     }
     UIManager:show(menu)
 end
@@ -248,7 +281,10 @@ function ZMachine:confirmExit()
         text = _("Are you sure you want to exit without saving?"),
         cancel_text = _("Cancel"),
         ok_text = _("Yes"),
-        ok_callback = function() self:closeGame() end,
+        ok_callback = function()
+            self:closeGame()
+            self:leave()
+        end,
     })
 end
 
@@ -269,6 +305,7 @@ function ZMachine:submit()
     if not self.co then                    -- story finished; Enter just closes
         UIManager:close(self.dialog)
         self.dialog = nil
+        self:leave()
         return
     end
     local full = self.dialog:getInputText() or ""

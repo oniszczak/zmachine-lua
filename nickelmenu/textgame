@@ -1,0 +1,1 @@
+menu_item :main :Text Game :cmd_spawn :quiet:touch /tmp/zmachine.launch && exec /mnt/onboard/.adds/koreader/koreader.sh

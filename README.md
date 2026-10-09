@@ -43,7 +43,11 @@ Copy `zmachine.koplugin/` into KOReader's plugins directory:
     Kobo     .adds/koreader/plugins/
 
 Put story files in your library folder, `koreader/stories`, or
-`/mnt/us/stories`. Then: **KOReader menu → Interactive fiction**.
+`/mnt/us/stories`. Then: **KOReader menu → Text Game**.
+
+On a Kobo with NickelMenu, also copy `nickelmenu/textgame` into `.adds/nm/`.
+**NickelMenu → Text Game** then starts KOReader straight into the story list,
+and leaving the game (or closing the list) returns to the Kobo home screen.
 
 The game opens as one full-screen view: text accumulates, you type at the
 bottom, Enter submits. Three buttons:
