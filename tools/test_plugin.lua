@@ -107,6 +107,7 @@ print("menu item        -> " .. items.zmachine.text .. "  (hint: " .. items.zmac
 items.zmachine.callback()
 assert(#shown >= 1, "nothing shown")
 assert(shown[#shown].__kind == "Menu", "expected a Menu, got " .. tostring(shown[#shown].__kind))
+assert(shown[#shown].subtitle == "Text Game © 2026 Aleks Oniszczak", "story list should show the credit")
 print("callback         -> showed " .. shown[#shown].__kind ..
       " with " .. #shown[#shown].item_table .. " entries")
 

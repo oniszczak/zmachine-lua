@@ -143,6 +143,7 @@ function ZMachine:chooseStory()
     end
     menu = Menu:new{
         title = _("Choose a story"),
+        subtitle = "Text Game © 2026 Aleks Oniszczak",
         item_table = items,
         is_popout = false,
         width = Device.screen:getWidth(),
